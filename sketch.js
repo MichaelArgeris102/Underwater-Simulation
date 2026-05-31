@@ -4,21 +4,26 @@ let loopData;
 let transSheet;
 let transData;
 
-const SCALE = 7;       // sprites are 16x16, this makes them 96x96 on screen
-const COLS = 10;       // 10 columns x 5 rows = 50 fish
+const SCALE = 7;
+const COLS = 10;
 const ROWS = 5;
-const speed = 1;
 
 let currentDirection = "right";
 let targetDirection = "right";
 
 let currentTag = null;
-let animFrame = 0;
 let isTransitioning = false;
+let transitionStartFrame = 0;
 
 let fishPositions = [];
 
-// maps direction names to their loop tag names in fishloops.json
+const directionVectors = {
+  right: null,
+  left:  null,
+  up:    null,
+  down:  null,
+};
+
 const loopTagNames = {
   right: "right_loop",
   up:    "up_loop",
@@ -26,72 +31,211 @@ const loopTagNames = {
   left:  "left_loop",
 };
 
-// builds the correct transition tag name to look up in fishtransitions.json
-// "left" is a special case — its up/down transitions use mirrored variants
-// because the fish sprite faces a different way when swimming left
 function getTransitionTagName(from, to) {
   const toName = {
-    right: { up: "up",          down: "down",          left: "left",   right: null },
-    up:    { right: "right",    down: "down",          left: "left",   up: null    },
-    down:  { right: "right",    up: "up",              left: "left",   down: null  },
-    left:  { up: "mirrored_up", down: "mirrored_down", right: "right", left: null  },
+    right: { up: "up", down: "down", left: "left", right: null },
+    up:    { right: "right", down: "down", left: "left", up: null },
+    down:  { right: "right", up: "up", left: "left", down: null },
+    left:  { up: "mirrored_up", down: "mirrored_down", right: "right", left: null },
   };
   const resolvedTo = toName[from][to];
-  if (!resolvedTo) return null; // same direction, no transition needed
+  if (!resolvedTo) return null;
   return from + "_to_" + resolvedTo;
 }
 
 function preload() {
   loopSheet = loadImage("assets/fishloops.png");
   loopData  = loadJSON("assets/fishloops.json");
-
   transSheet = loadImage("assets/fishtransitions.png");
   transData  = loadJSON("assets/fishtransitions.json");
 }
 
 function setup() {
-  createCanvas(2560, 1440);
-  noSmooth(); // keeps pixel art crisp, no interpolation
-  // divide the canvas evenly into a COLS x ROWS grid and center each fish in its cell
-  let cellW = 1550  / COLS; //width from canvas width
-  let cellH = 770 / ROWS; //height from canvas height
-  let distanceBetween = 150;
+  createCanvas(5200, 1440);
+  noSmooth();
 
-  //creates grid for fish to live in lets tweak
-  for (let row = 0; row < ROWS; row++) {
-    for (let col = 0; col < COLS; col++) {
-      if (cellW < 16 || cellH < 16 ){
-        break
-      }
+  directionVectors.right = createVector(1, 0);
+  directionVectors.left  = createVector(-1, 0);
+  directionVectors.up    = createVector(0, -1);
+  directionVectors.down  = createVector(0, 1);
 
-      fishPositions.push({
-        x: cellW * col + distanceBetween, //cellw * col left edge of its cell so its col num * consntant width ||
-                                                    //(cellW - 16 * SCALE) / 2 centers the fish in the center of the cell 
-        y: cellH * row + distanceBetween,  //cellH * row top edge of current row + distancebetween centers it 
-      });
-    }
+  fishPositions = [];
+  let spawnCenter = createVector(width / 2, height / 2);
+  let total = COLS * ROWS;
+
+  // Radius sized so average inter-fish spacing (~90px) is already at
+  // the natural equilibrium the boid rules settle into. At r=420 with
+  // 50 fish the mean gap is ~95px — just above minDistance — so no
+  // collapse happens on frame 1 and the school looks circular immediately.
+  let radius = 420;
+
+  for (let i = 0; i < total; i++) {
+    let dir = directionVectors[currentDirection];
+    let bias = random(0.88, 1.12);
+    let isHoriz = (currentDirection === "left" || currentDirection === "right");
+
+    // Uniform fill of a circle via rejection sampling.
+    let px, py;
+    do {
+      px = random(-radius, radius);
+      py = random(-radius, radius);
+    } while (px * px + py * py > radius * radius);
+
+    // Perpendicular velocity seeded from the fish's position in the
+    // circle — fish at the outer edge of the perp axis get the most
+    // outward velocity so the circle actively holds its shape rather
+    // than immediately collapsing inward.
+    let perpSeed = isHoriz ? py / radius : px / radius;
+    let perpSpeed = perpSeed * 3.0;
+
+    fishPositions.push({
+      position: p5.Vector.add(spawnCenter, createVector(px, py)),
+      vel: createVector(
+        dir.x * random(2, 4) * bias + (isHoriz ? 0 : perpSpeed),
+        dir.y * random(2, 4) * bias + (isHoriz ? perpSpeed : 0)
+      ),
+      bias:       bias,
+      noisePhase: random(1000),
+      id: i
+    });
   }
 }
 
 function draw() {
   background(220);
 
-  // getFrameInfo returns both the correct sheet/data AND the frame index
-  // so drawFrame knows which spritesheet to pull from
   let info = getFrameInfo();
 
-  for (let pos of fishPositions) {
-    if (currentDirection === 'right') pos.x += speed;
-    if (currentDirection === 'left') pos.x -= speed;
-    if (currentDirection === 'up') pos.y -= speed;
-    if (currentDirection === 'down') pos.y += speed;
-   
-   //fix this later
-    //if (isTransitioning) {
-    //pos.x = 0;
-    //pos.y = 0;
-//}
-    drawFrame(info.sheet, info.data, info.frameIndex, pos.x, pos.y);
+  let isHorizontal = (currentDirection === "left" || currentDirection === "right");
+
+  let minDistance = isHorizontal ? 78 : 80;
+  let visualRange = isHorizontal ? 320 : 290;
+
+  let globalCenter = createVector(width / 2, height / 2);
+  let desired = directionVectors[currentDirection];
+
+  for (let fish of fishPositions) {
+
+    if (isTransitioning) {
+      drawFrame(info.sheet, info.data, info.frameIndex, fish.position.x, fish.position.y);
+      continue;
+    }
+
+    let centerX = 0, centerY = 0;
+    let avgDX = 0, avgDY = 0;
+    let moveX = 0, moveY = 0;
+    let numNeighbors = 0;
+
+    for (let other of fishPositions) {
+      if (other === fish) continue;
+
+      let d = p5.Vector.dist(fish.position, other.position);
+
+      if (d < visualRange) {
+        centerX += other.position.x;
+        centerY += other.position.y;
+        avgDX += other.vel.x;
+        avgDY += other.vel.y;
+        numNeighbors++;
+      }
+
+      if (d < minDistance) {
+        moveX += fish.position.x - other.position.x;
+        moveY += fish.position.y - other.position.y;
+      }
+    }
+
+    // Cohesion
+    let cohesionStrength = isHorizontal ? 0.0015 : 0.003;
+    if (numNeighbors > 0) {
+      centerX /= numNeighbors;
+      centerY /= numNeighbors;
+      fish.vel.x += (centerX - fish.position.x) * cohesionStrength;
+      fish.vel.y += (centerY - fish.position.y) * cohesionStrength;
+    }
+
+    // Global cohesion
+    fish.vel.x += (globalCenter.x - fish.position.x) * 0.00008;
+    fish.vel.y += (globalCenter.y - fish.position.y) * 0.00008;
+
+    // Separation — project out any backward component so separation
+    // can only push fish sideways/diagonally, never reverse their heading.
+    let sepStrength = isHorizontal ? 0.048 : 0.065;
+    let sepX = moveX * sepStrength;
+    let sepY = moveY * sepStrength;
+
+    let dot = sepX * desired.x + sepY * desired.y;
+    if (dot < 0) {
+      sepX -= dot * desired.x;
+      sepY -= dot * desired.y;
+    }
+
+    fish.vel.x += sepX;
+    fish.vel.y += sepY;
+
+    // Alignment
+    if (numNeighbors > 0) {
+      avgDX /= numNeighbors;
+      avgDY /= numNeighbors;
+      let alignStrength = isHorizontal ? 0.028 : 0.05;
+      fish.vel.x += (avgDX - fish.vel.x) * alignStrength;
+      fish.vel.y += (avgDY - fish.vel.y) * alignStrength;
+    }
+
+    // Directional steering — bumped up from 0.13 for snappier movement
+    fish.vel.x += desired.x * 0.18 * fish.bias;
+    fish.vel.y += desired.y * 0.18 * fish.bias;
+
+    // Perpendicular Perlin drift
+    let t = frameCount * 0.006;
+    let drift = (noise(t, fish.noisePhase) - 0.5) * 2;
+    let driftStrength = isHorizontal ? 0.11 : 0.06;
+    if (isHorizontal) {
+      fish.vel.y += drift * driftStrength;
+    } else {
+      fish.vel.x += drift * driftStrength;
+    }
+
+    // Per-fish random particle jitter
+    let jitter = 0.18;
+    if (isHorizontal) {
+      fish.vel.y += random(-jitter, jitter);
+    } else {
+      fish.vel.x += random(-jitter, jitter);
+    }
+
+    // Speed limit — raised from 6 to 8 for snappier overall movement
+    let speedLimit = 8 * fish.bias;
+    let speed = fish.vel.mag();
+    if (speed > speedLimit) {
+      fish.vel.normalize();
+      fish.vel.mult(speedLimit);
+    }
+
+    // Bounds steering
+    let innerMargin = 500;
+
+    if (fish.position.x < innerMargin) {
+      let depth = (innerMargin - fish.position.x) / innerMargin;
+      fish.vel.x += depth * depth * 1.2;
+    }
+    if (fish.position.x > width - innerMargin) {
+      let depth = (fish.position.x - (width - innerMargin)) / innerMargin;
+      fish.vel.x -= depth * depth * 1.2;
+    }
+
+    if (fish.position.y < innerMargin) {
+      let depth = (innerMargin - fish.position.y) / innerMargin;
+      fish.vel.y += depth * depth * 1.2;
+    }
+    if (fish.position.y > height - innerMargin) {
+      let depth = (fish.position.y - (height - innerMargin)) / innerMargin;
+      fish.vel.y -= depth * depth * 1.2;
+    }
+
+    fish.position.add(fish.vel);
+
+    drawFrame(info.sheet, info.data, info.frameIndex, fish.position.x, fish.position.y);
   }
 }
 
@@ -100,8 +244,6 @@ function keyPressed() {
   if (key === 'a') targetDirection = "left";
   if (key === 's') targetDirection = "down";
   if (key === 'd') targetDirection = "right";
-
-  // only start a transition if the direction actually changed
   if (targetDirection !== currentDirection) {
     startTransition(currentDirection, targetDirection);
   }
@@ -109,92 +251,48 @@ function keyPressed() {
 
 function startTransition(from, to) {
   let tagName = getTransitionTagName(from, to);
-
-  if (!tagName) {
-    console.log("No transition needed from", from, "to", to);
-    return;
-  }
-
+  if (!tagName) return;
   let tag = transData.meta.frameTags.find(t => t.name === tagName);
-
-  if (!tag) {
-    console.log("Missing transition tag:", tagName);
-    return;
-  }
-
+  if (!tag) return;
   currentTag = tag;
-  animFrame = 0;      // reset playhead to start of transition
+  transitionStartFrame = frameCount;
   isTransitioning = true;
 }
 
-// if were transitioning set start and end of transitions, increment frameIndex with the proper start from the json
-//once transition completes stop turning and lock in new direction and resset timer
-//if decides which sheet to display and return the instructions for drawing that sheet 
-// if is for transition sheet and else accoutns for loop sheet
 function getFrameInfo() {
   if (isTransitioning) {
+    let elapsed = frameCount - transitionStartFrame;
     let start = currentTag.from;
     let end   = currentTag.to;
 
-    // divide animFrame by 6 to slow the animation down (6 draw() calls per sprite frame)
-    let frameIndex = start + floor(animFrame / 6); //slows animation down to about the speed of aesprite
+    let fromIsHorizontal = (currentDirection === "left" || currentDirection === "right");
+    let divisor = fromIsHorizontal ? 4 : 6;
 
-    // once we've played past the last frame, transition is done
+    let frameIndex = start + floor(elapsed / divisor);
     if (frameIndex > end) {
       isTransitioning = false;
       currentDirection = targetDirection;
-      animFrame = 0;
-      // drop into loop immediately for this frame
-      return getLoopFrameInfo(); // <-- loop sheet
+      transitionStartFrame = 0;
+      return getLoopFrameInfo();
     }
-
-    animFrame++;
-    return { sheet: transSheet, data: transData, frameIndex }; // <-- transition sheet
-
-  } 
-  else {
+    return { sheet: transSheet, data: transData, frameIndex };
+  } else {
     return getLoopFrameInfo();
   }
 }
 
 function getLoopFrameInfo() {
   let tagName = loopTagNames[currentDirection];
-  let tag = loopData.meta.frameTags.find(t => t.name === tagName); //look through every tag and check if they are equal to what tagName holds
-
-  if (!tag) {
-    console.log("Missing loop tag:", tagName);
-    return { sheet: loopSheet, data: loopData, frameIndex: 0 }; // fallback frame in case of crash play frame 0 and keep running
-  }
-
+  let tag = loopData.meta.frameTags.find(t => t.name === tagName);
+  if (!tag) return { sheet: loopSheet, data: loopData, frameIndex: 0 };
   let start  = tag.from;
   let end    = tag.to;
-  let length = end - start + 1; // so length could = 15-10 +1 = 6 frames total 
-
- 
-  let frameIndex = start + (floor(frameCount / 6) % length);  // use p5js framecount and slow it down by diving it by 6 then flooring it
-                                                              //%legnth turns 0 1 2 3 4 5 6 into 0 1 2 3 ,0 1 2 3 if length = 4
-
-  return { sheet: loopSheet, data: loopData, frameIndex }; // <-- loop sheet
+  let length = end - start + 1;
+  let frameIndex = start + (floor(frameCount / 6) % length);
+  return { sheet: loopSheet, data: loopData, frameIndex };
 }
 
-
-
-
-
 function drawFrame(sheet, data, index, x, y) {
-  let f = data.frames[index].frame; // so were saying let f hold a line of json data like "frame": { "x": 128, "y": 32, "w": 16, "h": 16 }
-
-  // p5 image() signature: image(img, dx, dy, dw, dh, sx, sy, sw, sh)
-  // d = destination (where on canvas), s = source (where on spritesheet)
-  // multiply dw/dh by SCALE to zoom the sprite up from 16x16 to 96x96
-
-  
-  image(
-    sheet,
-    x, y,
-    f.w * SCALE, f.h * SCALE, //x and y are actual location while f.w and f.h are the width and height and or zoom or scale of the fish
-
-    f.x, f.y,  //start at frame f.x, f.y we get from first line so this starts at whichever frame we need
-    f.w, f.h // size of the cut
-  );
+  let f = data.frames[index].frame;
+  image(sheet, x, y, f.w * SCALE, f.h * SCALE, f.x, f.y, f.w, f.h);
 }
