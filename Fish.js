@@ -7,13 +7,12 @@ class Fish extends SwimmingEntity {
     }
 
     update(neighbors) {
-        if (this.isTransitioning) return;
-
-        let isHorizontal = (this.currentDirection === "left" || this.currentDirection === "right");
-        let minDistance  = isHorizontal ? 78 : 80;
-        let visualRange  = isHorizontal ? 320 : 290;
+        let movementDirection = this.isTransitioning ? this.targetDirection : this.currentDirection;
+        let isHorizontal = (movementDirection === "left" || movementDirection === "right");
+        let minDistance  = (isHorizontal ? 78 : 80) * SCHOOL_SCALE;
+        let visualRange  = (isHorizontal ? 320 : 290) * SCHOOL_SCALE;
         let globalCenter = createVector(width / 2, height / 2);
-        let desired      = directionVectors[this.currentDirection];
+        let desired      = directionVectors[movementDirection];
         let innerMargin  = min(width, height) * 0.25;
 
         let centerX = 0, centerY = 0;
