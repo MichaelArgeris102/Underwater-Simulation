@@ -4,9 +4,22 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Underwater Simulation</title>
+  <link rel="stylesheet" href="style.css">
   <script src="https://cdnjs.cloudflare.com/ajax/libs/p5.js/1.7.0/p5.js"></script>
 </head>
 <body>
+
+  <div id="menu-overlay">
+    <div id="menu-box">
+      <h1>Underwater</h1>
+      <p>choose your role</p>
+      <div id="menu-buttons">
+        <button onclick="startGame('hunter')">Hunter</button>
+        <button onclick="startGame('prey')">Prey</button>
+      </div>
+    </div>
+  </div>
+
   <!-- Load order matters: base class first, then subclass, then sketch -->
   <script src="SwimmingEntity.js"></script>
   <script src="Fish.js"></script>

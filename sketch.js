@@ -59,6 +59,7 @@ function preload() {
 }
 
 function setup() {
+    
     createCanvas(windowWidth, windowHeight);
     noSmooth();
 
@@ -86,6 +87,16 @@ function windowResized() {
 }
 
 // ---------------------------------------------------------------------------
+// Menu → game transition
+// ---------------------------------------------------------------------------
+
+function startGame(mode) {
+    selectedMode = mode;
+    gameState    = "playing";
+    document.getElementById("menu-overlay").classList.add("hidden");
+}
+
+// ---------------------------------------------------------------------------
 // Fish spawning
 // ---------------------------------------------------------------------------
 
@@ -98,7 +109,6 @@ function spawnFish() {
 
     for (let i = 0; i < total; i++) {
         let bias    = random(0.88, 1.12);
-        let isHoriz = true; // default spawn direction is right
 
         // Uniform fill of a circle via rejection sampling
         let px, py;
@@ -134,6 +144,7 @@ function spawnFish() {
 // ---------------------------------------------------------------------------
 
 function draw() {
+    if (gameState !== "playing") return;
 
     background(220);
 
@@ -149,6 +160,8 @@ function draw() {
 // ---------------------------------------------------------------------------
 
 function keyPressed() {
+    if (gameState !== "playing") return;
+
     let newDirection = null;
     if (key === 'w') newDirection = "up";
     if (key === 'a') newDirection = "left";
