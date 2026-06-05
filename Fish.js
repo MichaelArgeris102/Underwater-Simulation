@@ -49,8 +49,8 @@ class Fish extends SwimmingEntity {
         }
 
         // Global cohesion — gentle pull toward canvas centre
-        this.vel.x += (globalCenter.x - this.position.x) * 0.00008;
-        this.vel.y += (globalCenter.y - this.position.y) * 0.00008;
+        this.vel.x += (globalCenter.x - this.position.x) * 0.00022;
+        this.vel.y += (globalCenter.y - this.position.y) * 0.00022;
 
         // Separation — project out any backward component
         let sepStrength = isHorizontal ? 0.048 : 0.065;
