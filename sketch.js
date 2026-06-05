@@ -107,7 +107,7 @@ function spawnFish() {
 
     let spawnCenter    = createVector(width / 2, height / 2);
     let total          = COLS * ROWS;
-    const SPAWN_RADIUS = 420 * SCHOOL_SCALE;
+    const SPAWN_RADIUS = 340 * SCHOOL_SCALE;
 
     for (let i = 0; i < total; i++) {
         let bias    = random(0.88, 1.12);
