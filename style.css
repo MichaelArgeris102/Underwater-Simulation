@@ -1,0 +1,87 @@
+
+
+* {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+}
+
+body {
+  overflow: hidden;
+}
+
+/* ── Menu overlay ─────────────────────────────────────────── */
+
+#menu-overlay {
+  position: fixed;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(8, 18, 34, 0.68);
+  z-index: 10;
+  backdrop-filter: blur(2px);
+  -webkit-backdrop-filter: blur(2px);
+}
+
+#menu-overlay.hidden {
+  display: none;
+}
+
+/* ── Menu card ────────────────────────────────────────────── */
+
+#menu-box {
+  text-align: center;
+  color: #c8dff0;
+  font-family: 'Georgia', serif;
+  user-select: none;
+}
+
+#menu-box h1 {
+  font-size: 2rem;
+  font-weight: 400;
+  letter-spacing: 0.35em;
+  text-transform: uppercase;
+  margin-bottom: 0.35rem;
+  opacity: 0.9;
+}
+
+#menu-box p {
+  font-family: 'Courier New', monospace;
+  font-size: 0.75rem;
+  letter-spacing: 0.18em;
+  opacity: 0.45;
+  margin-bottom: 2.4rem;
+}
+
+/* ── Buttons ──────────────────────────────────────────────── */
+
+#menu-buttons {
+  display: flex;
+  gap: 1rem;
+  justify-content: center;
+}
+
+#menu-buttons button {
+  padding: 0.65rem 2.4rem;
+  background: transparent;
+  border: 1px solid rgba(200, 223, 240, 0.35);
+  color: #c8dff0;
+  font-family: 'Courier New', monospace;
+  font-size: 0.8rem;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  cursor: pointer;
+  transition: background 0.18s ease, border-color 0.18s ease, opacity 0.18s ease;
+  opacity: 0.8;
+}
+
+#menu-buttons button:hover {
+  background: rgba(200, 223, 240, 0.1);
+  border-color: rgba(200, 223, 240, 0.75);
+  opacity: 1;
+}
+
+#menu-buttons button:active {
+  background: rgba(200, 223, 240, 0.18);
+}
