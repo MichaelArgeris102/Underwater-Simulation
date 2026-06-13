@@ -80,8 +80,32 @@ class SwimmingEntity {
         return { sheet: this.loopSheet, data: this.loopData, frameIndex };
     }
 
+    shouldCropLeftEdge(data, index) {
+        let tags = data.meta && data.meta.frameTags;
+        if (!tags) return false;
+
+        return tags.some(tag =>
+            (tag.name === "right_loop" || tag.name === "left_loop") &&
+            index >= tag.from &&
+            index <= tag.to
+        );
+    }
+
+
     drawFrame(sheet, data, index, x, y) {
         let f = data.frames[index].frame;
-        image(sheet, x, y, f.w * SCALE, f.h * SCALE, f.x, f.y, f.w, f.h);
+        let cropLeft = this.shouldCropLeftEdge(data, index) ? 1 : 0;
+
+        image(
+            sheet,
+            round(x + cropLeft * SCALE),
+            round(y),
+            (f.w - cropLeft) * SCALE,
+            f.h * SCALE,
+            f.x + cropLeft,
+            f.y,
+            f.w - cropLeft,
+            f.h
+        );
     }
 }

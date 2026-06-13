@@ -6,15 +6,17 @@ class Fish extends SwimmingEntity {
         this.id         = id;
     }
 
-    update(neighbors) {
-        if (this.isTransitioning) return;
+   
+    
 
-        let isHorizontal = (this.currentDirection === "left" || this.currentDirection === "right");
-        let minDistance  = isHorizontal ? 78 : 80;
-        let visualRange  = isHorizontal ? 320 : 290;
+    update(neighbors) {
+        let movementDirection = this.isTransitioning ? this.targetDirection : this.currentDirection;
+        let isHorizontal = (movementDirection === "left" || movementDirection === "right");
+        let minDistance  = (isHorizontal ? 78 : 80) * SCHOOL_SCALE;
+        let visualRange  = (isHorizontal ? 320 : 290) * SCHOOL_SCALE;
         let globalCenter = createVector(width / 2, height / 2);
-        let desired      = directionVectors[this.currentDirection];
-        let innerMargin  = min(width, height) * 0.25;
+        let desired      = directionVectors[movementDirection];
+        let innerMargin  = min(width, height) * 0.18;
 
         let centerX = 0, centerY = 0;
         let avgDX   = 0, avgDY   = 0;
@@ -50,8 +52,8 @@ class Fish extends SwimmingEntity {
         }
 
         // Global cohesion — gentle pull toward canvas centre
-        this.vel.x += (globalCenter.x - this.position.x) * 0.00008;
-        this.vel.y += (globalCenter.y - this.position.y) * 0.00008;
+        this.vel.x += (globalCenter.x - this.position.x) * 0.00022;
+        this.vel.y += (globalCenter.y - this.position.y) * 0.00022;
 
         // Separation — project out any backward component
         let sepStrength = isHorizontal ? 0.048 : 0.065;
@@ -106,23 +108,25 @@ class Fish extends SwimmingEntity {
             this.vel.mult(speedLimit);
         }
 
-        // Soft boundary walls
-        if (this.position.x < innerMargin) {
-            let depth = (innerMargin - this.position.x) / innerMargin;
-            this.vel.x += depth * depth * 1.2;
+        // Boundarys indicating transition point
+       // Wall turning — trigger direction reversal at boundary
+        if (!this.isTransitioning) {
+            if (movementDirection === 'right' && this.position.x > width - innerMargin) {
+                this.targetDirection = 'left';
+                this.startTransition(this.currentDirection, 'left');
+            } else if (movementDirection === 'left' && this.position.x < innerMargin) {
+                this.targetDirection = 'right';
+                this.startTransition(this.currentDirection, 'right');
+            } else if (movementDirection === 'up' && this.position.y < innerMargin) {
+                this.targetDirection = 'down';
+                this.startTransition(this.currentDirection, 'down');
+            } else if (movementDirection === 'down' && this.position.y > height - innerMargin) {
+                this.targetDirection = 'up';
+                this.startTransition(this.currentDirection, 'up');
+            }
         }
-        if (this.position.x > width - innerMargin) {
-            let depth = (this.position.x - (width - innerMargin)) / innerMargin;
-            this.vel.x -= depth * depth * 1.2;
-        }
-        if (this.position.y < innerMargin) {
-            let depth = (innerMargin - this.position.y) / innerMargin;
-            this.vel.y += depth * depth * 1.2;
-        }
-        if (this.position.y > height - innerMargin) {
-            let depth = (this.position.y - (height - innerMargin)) / innerMargin;
-            this.vel.y -= depth * depth * 1.2;
-        }
+
+        this.position.add(this.vel);
 
         this.position.add(this.vel);
     }
