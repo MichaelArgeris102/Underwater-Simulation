@@ -23,6 +23,11 @@ const SCALE        = 1.75;
 const SCHOOL_SCALE = SCALE / BASE_SCALE;
 const COLS         = 10;
 const ROWS         = 5;
+const BASE_SCALE   = 7;
+const SCALE        = 1.75;
+const SCHOOL_SCALE = SCALE / BASE_SCALE;
+const COLS         = 10;
+const ROWS         = 5;
 
 const directionVectors = {
     right: null,
@@ -134,6 +139,7 @@ function spawnFish() {
 
     let spawnCenter    = createVector(width / 2, height / 2);
     let total          = COLS * ROWS;
+    const SPAWN_RADIUS = 340 * SCHOOL_SCALE;
     const SPAWN_RADIUS = 340 * SCHOOL_SCALE;
 
     for (let i = 0; i < total; i++) {

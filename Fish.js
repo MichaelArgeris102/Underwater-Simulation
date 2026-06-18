@@ -19,6 +19,10 @@ class Fish extends SwimmingEntity {
         let isHorizontal = (movementDirection === "left" || movementDirection === "right");
         let minDistance  = (isHorizontal ? 78 : 80) * SCHOOL_SCALE;
         let visualRange  = (isHorizontal ? 320 : 290) * SCHOOL_SCALE;
+        let movementDirection = this.isTransitioning ? this.targetDirection : this.currentDirection;
+        let isHorizontal = (movementDirection === "left" || movementDirection === "right");
+        let minDistance  = (isHorizontal ? 78 : 80) * SCHOOL_SCALE;
+        let visualRange  = (isHorizontal ? 320 : 290) * SCHOOL_SCALE;
         let globalCenter = createVector(width / 2, height / 2);
         let desired      = directionVectors[movementDirection];
         let innerMargin  = min(width, height) * 0.18;
@@ -57,6 +61,8 @@ class Fish extends SwimmingEntity {
         }
 
         // Global cohesion — gentle pull toward canvas centre
+        this.vel.x += (globalCenter.x - this.position.x) * 0.00022;
+        this.vel.y += (globalCenter.y - this.position.y) * 0.00022;
         this.vel.x += (globalCenter.x - this.position.x) * 0.00022;
         this.vel.y += (globalCenter.y - this.position.y) * 0.00022;
 
