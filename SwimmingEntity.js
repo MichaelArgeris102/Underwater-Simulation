@@ -107,18 +107,5 @@ class SwimmingEntity {
             f.w - cropLeft,
             f.h
         );
-        let cropLeft = this.shouldCropLeftEdge(data, index) ? 1 : 0;
-
-        image(
-            sheet,
-            round(x + cropLeft * SCALE),
-            round(y),
-            (f.w - cropLeft) * SCALE,
-            f.h * SCALE,
-            f.x + cropLeft,
-            f.y,
-            f.w - cropLeft,
-            f.h
-        );
     }
 }

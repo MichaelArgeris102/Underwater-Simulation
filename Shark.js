@@ -320,9 +320,10 @@ class Shark extends SwimmingEntity {
 
     // Returns the world-space position of the shark's mouth / head tip.
     // The sprite is 28px wide × 22px tall drawn at drawScale.
-    // The mouth is near the front edge, offset by ~12 sprite-pixels from center.
+    // Offset reduced to 8 sprite-pixels (was 12) so the circle sits closer
+    // to the snout rather than floating out in front of it.
     getMouthPosition() {
-        const MOUTH_OFFSET = 12 * this.drawScale;
+        const MOUTH_OFFSET = 8 * this.drawScale;
 
         // Direction vectors for each animation direction
         const offsets = {
@@ -341,8 +342,9 @@ class Shark extends SwimmingEntity {
     }
 
     // Radius of the active-bite hitbox circle (in screen pixels).
+    // Reduced from 7 to 5 sprite-pixels so the outer reach comes in ~30%.
     getMouthRadius() {
-        return 7 * this.drawScale;
+        return 5 * this.drawScale;
     }
 
     // True only when the bite animation is in the "mouth open" window.

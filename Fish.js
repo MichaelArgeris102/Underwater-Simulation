@@ -7,7 +7,18 @@ class Fish extends SwimmingEntity {
     }
 
    
-     // Returns the screen-space radius of this fish's body hitbox.
+     // Returns the screen-space center of this fish's body.
+    // fish.position is the TOP-LEFT corner of the sprite (SwimmingEntity.drawFrame
+    // draws from x,y as top-left). The sprite is 16×16 at SCALE, so the visual
+    // center is always half that in each axis regardless of swim direction.
+    getBodyCenter() {
+        return createVector(
+            this.position.x + 8 * SCALE,
+            this.position.y + 8 * SCALE
+        );
+    }
+
+    // Returns the screen-space radius of this fish's body hitbox.
     // The fish sprite is 16×16 pixels drawn at SCALE, so the rendered body
     // fits comfortably inside a circle of about 7 sprite-pixels × SCALE.
     getHitRadius() {
@@ -15,10 +26,6 @@ class Fish extends SwimmingEntity {
     }
 
     update(neighbors) {
-        let movementDirection = this.isTransitioning ? this.targetDirection : this.currentDirection;
-        let isHorizontal = (movementDirection === "left" || movementDirection === "right");
-        let minDistance  = (isHorizontal ? 78 : 80) * SCHOOL_SCALE;
-        let visualRange  = (isHorizontal ? 320 : 290) * SCHOOL_SCALE;
         let movementDirection = this.isTransitioning ? this.targetDirection : this.currentDirection;
         let isHorizontal = (movementDirection === "left" || movementDirection === "right");
         let minDistance  = (isHorizontal ? 78 : 80) * SCHOOL_SCALE;
@@ -61,8 +68,6 @@ class Fish extends SwimmingEntity {
         }
 
         // Global cohesion — gentle pull toward canvas centre
-        this.vel.x += (globalCenter.x - this.position.x) * 0.00022;
-        this.vel.y += (globalCenter.y - this.position.y) * 0.00022;
         this.vel.x += (globalCenter.x - this.position.x) * 0.00022;
         this.vel.y += (globalCenter.y - this.position.y) * 0.00022;
 

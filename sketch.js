@@ -23,11 +23,6 @@ const SCALE        = 1.75;
 const SCHOOL_SCALE = SCALE / BASE_SCALE;
 const COLS         = 10;
 const ROWS         = 5;
-const BASE_SCALE   = 7;
-const SCALE        = 1.75;
-const SCHOOL_SCALE = SCALE / BASE_SCALE;
-const COLS         = 10;
-const ROWS         = 5;
 
 const directionVectors = {
     right: null,
@@ -140,7 +135,6 @@ function spawnFish() {
     let spawnCenter    = createVector(width / 2, height / 2);
     let total          = COLS * ROWS;
     const SPAWN_RADIUS = 340 * SCHOOL_SCALE;
-    const SPAWN_RADIUS = 340 * SCHOOL_SCALE;
 
     for (let i = 0; i < total; i++) {
         let bias    = random(0.88, 1.12);
@@ -210,8 +204,9 @@ function draw() {
     // Fish body circles — faint red
     stroke(255, 60, 60, 120);
     for (let fish of fishPositions) {
-        let r = fish.getHitRadius();
-        circle(fish.position.x, fish.position.y, r * 2);
+        let center = fish.getBodyCenter();
+        let r      = fish.getHitRadius();
+        circle(center.x, center.y, r * 2);
     }
 
     // Shark mouth circle — dim red normally, bright red when bite is active
