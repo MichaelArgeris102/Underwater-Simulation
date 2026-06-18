@@ -7,7 +7,12 @@ class Fish extends SwimmingEntity {
     }
 
    
-    
+     // Returns the screen-space radius of this fish's body hitbox.
+    // The fish sprite is 16×16 pixels drawn at SCALE, so the rendered body
+    // fits comfortably inside a circle of about 7 sprite-pixels × SCALE.
+    getHitRadius() {
+        return 7 * SCALE;
+    }
 
     update(neighbors) {
         let movementDirection = this.isTransitioning ? this.targetDirection : this.currentDirection;

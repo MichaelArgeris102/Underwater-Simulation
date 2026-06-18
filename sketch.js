@@ -108,19 +108,21 @@ function windowResized() {
 // Menu to game transition
 // ---------------------------------------------------------------------------
 
+// Replace your existing startGame function in sketch.js:
 function startGame(mode) {
     selectedMode = mode;
     console.log(selectedMode);
     gameState    = "playing";
     document.getElementById("menu-overlay").classList.add("hidden");
-    if (selectedMode == 'hunter'){
-        shark = new Shark (width/2, height/2,sharkLoopSheet,sharkLoopData,sharkTransSheet,sharkTransData,sharkBiteData,sharkBiteSheet )
-    }
+    
+    // Spawn the shark in BOTH modes instead of just 'hunter'
+    shark = new Shark(
+        width/2, height/2, 
+        sharkLoopSheet, sharkLoopData, 
+        sharkTransSheet, sharkTransData, 
+        sharkBiteSheet, sharkBiteData 
+    );
     console.log(shark);
-   
-
-
-
 }
 
 // ---------------------------------------------------------------------------
@@ -194,6 +196,32 @@ function draw() {
         shark.drawFrame(info.sheet, info.data, info.frameIndex,shark.position.x,shark.position.y);
     }
 
+    // ── Debug hitboxes ────────────────────────────────────────────────────────
+    // Draw these AFTER all sprites so they sit on top and are easy to see.
+    noFill();
+    strokeWeight(1.5);
+
+    // Fish body circles — faint red
+    stroke(255, 60, 60, 120);
+    for (let fish of fishPositions) {
+        let r = fish.getHitRadius();
+        circle(fish.position.x, fish.position.y, r * 2);
+    }
+
+    // Shark mouth circle — dim red normally, bright red when bite is active
+    if (shark) {
+        let mouthPos    = shark.getMouthPosition();
+        let mouthRadius = shark.getMouthRadius();
+        if (shark.isBiteHitboxActive()) {
+            stroke(255, 30, 30, 230);   // vivid red: hitbox is live
+            strokeWeight(2.5);
+        } else {
+            stroke(255, 80, 80, 100);   // faint: hitbox is dormant
+            strokeWeight(1.5);
+        }
+        circle(mouthPos.x, mouthPos.y, mouthRadius * 2);
+    }
+
 }
 
 // ---------------------------------------------------------------------------
@@ -201,9 +229,17 @@ function draw() {
 // ---------------------------------------------------------------------------
 
 function keyPressed() {
-    
     if (gameState !== "playing") return;
 
+    // --- Handle Biting ---
+    if (key === ' ') {
+        if (shark !== null && selectedMode === "hunter") {
+            shark.startBite();
+        }
+        return; // Exit early so we don't trigger movement logic simultaneously
+    }
+
+    // --- Existing Movement Logic ---
     let newDirection = null;
     if (key === 'w'|| key === 'W') newDirection = "up";
     if (key === 'a'|| key === 'A') newDirection = "left";
@@ -219,14 +255,15 @@ function keyPressed() {
         }
     }
 
-    if(shark !== null ){
-        let resolved = shark.resolveDirection((newDirection))
+    // ONLY control the shark manually if we are NOT in prey mode
+    if(shark !== null && selectedMode !== "prey") {
+        // Optional: Prevent the shark from turning while mid-bite
+        if (shark.isBiting) return; 
+
+        let resolved = shark.resolveDirection((newDirection));
         if(resolved !== shark.currentDirection || shark.isTransitioning ){
             shark.targetDirection = resolved;
-            shark.startTransition (shark.currentDirection, resolved);
+            shark.startTransition(shark.currentDirection, resolved);
         }
     }
-
-    
-
 }
