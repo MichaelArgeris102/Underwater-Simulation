@@ -169,6 +169,30 @@ function spawnFish() {
 }
 
 // ---------------------------------------------------------------------------
+// Bite collisions
+// ---------------------------------------------------------------------------
+
+// Erases any fish caught inside the shark's mouth while the bite hitbox is
+// active. Runs the same way in both modes — hunter (player bites) and prey
+// (shark auto-bites, once that's wired up) — since it only cares about
+// isBiteHitboxActive(), not who's controlling the shark.
+function checkBiteCollisions() {
+    if (!shark || !shark.isBiteHitboxActive()) return;
+
+    let mouthPos    = shark.getMouthPosition();
+    let mouthRadius = shark.getMouthRadius();
+
+    fishPositions = fishPositions.filter(fish => {
+        let fishCenter = fish.getBodyCenter();
+        let fishRadius = fish.getHitRadius();
+        let distance   = p5.Vector.dist(mouthPos, fishCenter);
+
+        // Keep the fish only if it's NOT overlapping the active bite hitbox
+        return distance > (mouthRadius + fishRadius);
+    });
+}
+
+// ---------------------------------------------------------------------------
 // Draw
 // ---------------------------------------------------------------------------
 
@@ -195,6 +219,8 @@ function draw() {
         let info = shark.getFrameInfo();
         shark.drawFrame(info.sheet, info.data, info.frameIndex,shark.position.x,shark.position.y);
     }
+
+    checkBiteCollisions();
 
     // ── Debug hitboxes ────────────────────────────────────────────────────────
     // Draw these AFTER all sprites so they sit on top and are easy to see.
