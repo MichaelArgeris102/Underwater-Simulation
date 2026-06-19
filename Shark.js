@@ -117,6 +117,30 @@ class Shark extends SwimmingEntity {
 
     startTransition(from, to) {
     let wasAlreadyTransitioning = this.isTransitioning;   // capture before we modify state
+
+    // --- BITE INTERRUPT LOGIC ---
+    // If we're mid-bite, figure out exactly which relative frame of the bite
+    // tag is currently showing, then cancel the bite. We'll resume the
+    // animation one frame later in the transition tag, so the motion reads
+    // as continuous instead of snapping or waiting for the bite to finish.
+    let interruptedBiteRelIdx = null;
+    if (this.isBiting) {
+        let elapsed        = frameCount - this.biteStartFrame;
+        let biteDivisor     = 6;
+        let elapsedFrames   = floor(elapsed / biteDivisor);
+        let biteLength      = this.currentBiteTag.to - this.currentBiteTag.from + 1;
+        let currentRelIdx   = this.biteStartRelIdx + elapsedFrames;
+        if (currentRelIdx >= biteLength) currentRelIdx = biteLength - 1;
+        if (currentRelIdx < 0) currentRelIdx = 0;
+        interruptedBiteRelIdx = currentRelIdx;
+
+        this.isBiting              = false;
+        this.biteStartFrame        = 0;
+        this.currentBiteTag        = null;
+        this.biteNeedsExtraLoop    = false;
+        this.biteExtraLoopQueued   = false;
+    }
+
     let headSide  = this.getHeadSide();
     let tagName   = this.getTransitionTagName(from, to, headSide);
     if (!tagName) return;
@@ -133,11 +157,20 @@ class Shark extends SwimmingEntity {
 
     this.currentTag = tag;   // must be set before calling getTransitionDivisor()
 
-    // Only apply the skip when starting fresh from the loop; if we're already
-    // mid-transition and a new key arrives, just restart cleanly from frame 0.
-    let skipFrames = wasAlreadyTransitioning ? 0 : this.getTransitionSkipFrames();
-    let maxSkip    = tag.to - tag.from;
-    skipFrames     = Math.min(skipFrames, maxSkip);
+    let skipFrames;
+    if (interruptedBiteRelIdx !== null) {
+        // Resume one frame past where the bite was cut off — e.g. biting on
+        // relIdx 5 of right_bite means we pick up at relIdx 6 of the
+        // right_to_<dir> transition tag.
+        skipFrames = interruptedBiteRelIdx + 1;
+    } else {
+        // Only apply the loop-based skip when starting fresh from the loop;
+        // if we're already mid-transition and a new key arrives, just
+        // restart cleanly from frame 0.
+        skipFrames = wasAlreadyTransitioning ? 0 : this.getTransitionSkipFrames();
+    }
+    let maxSkip = tag.to - tag.from;
+    skipFrames  = Math.min(skipFrames, maxSkip);
 
     let divisor           = this.getTransitionDivisor();
     this.transitionStartFrame = frameCount - Math.round(skipFrames * divisor);
@@ -367,7 +400,7 @@ class Shark extends SwimmingEntity {
             return currentRelIdx >= 2 && currentRelIdx <= 8;
         }
         // up_bite / down_bite: 17 frames, mouth open frames 4–11
-        if (tag.name === 'up_bite' || tag.name === 'down_bite') {
+        if (tag.name === 'up_bite' || tag.name === 'down_bite' || tag.name === 'mirrored_up_bite' || tag.name === 'mirrored_down_bite') {
             return currentRelIdx >= 4 && currentRelIdx <= 11;
         }
         return false;
@@ -391,7 +424,7 @@ update(schoolCenter) {
         this.vel.mult(topSpeed);
     }
 
-    // --- AUTOMATED TRANSITIONS (ONLY IN PREY MODE) ---
+    // --- AUTOMATED TRANSITIONS (ONLY WHEN SELECTING PREY) ---
     if (selectedMode === "prey") {
         
         // 1. School Mimicking

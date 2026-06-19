@@ -258,9 +258,6 @@ function keyPressed() {
 
     // ONLY control the shark manually if we are NOT in prey mode
     if(shark !== null && selectedMode !== "prey") {
-        // Optional: Prevent the shark from turning while mid-bite
-        if (shark.isBiting) return; 
-
         let resolved = shark.resolveDirection((newDirection));
         if(resolved !== shark.currentDirection || shark.isTransitioning ){
             shark.targetDirection = resolved;
