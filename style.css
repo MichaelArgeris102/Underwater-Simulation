@@ -83,3 +83,79 @@ body {
 #menu-buttons button:active {
   background: rgba(200, 223, 240, 0.18);
 }
+
+/* ── Game-over overlay ────────────────────────────────────── */
+
+#gameover-overlay {
+  position: fixed;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(8, 18, 34, 0.62);
+  z-index: 10;
+  backdrop-filter: blur(2px);
+  -webkit-backdrop-filter: blur(2px);
+}
+
+#gameover-overlay.hidden {
+  display: none;
+}
+
+#gameover-box {
+  text-align: center;
+  color: #c8dff0;
+  font-family: 'Courier New', monospace;
+  user-select: none;
+}
+
+#go-title {
+  font-size: 2rem;
+  letter-spacing: 0.25em;
+  font-family: 'Georgia', serif;
+  font-weight: 400;
+  margin-bottom: 1rem;
+}
+
+#go-score {
+  font-size: 1.5rem;
+  letter-spacing: 0.2em;
+  margin-bottom: 0.4rem;
+}
+
+#go-time {
+  font-size: 1.5rem;
+  letter-spacing: 0.2em;
+  opacity: 0.7;
+  margin-bottom: 2.2rem;
+}
+
+#gameover-buttons {
+  display: flex;
+  gap: 1rem;
+  justify-content: center;
+}
+
+#gameover-buttons button {
+  padding: 0.65rem 2.4rem;
+  background: transparent;
+  border: 1px solid rgba(200, 223, 240, 0.35);
+  color: #c8dff0;
+  font-family: 'Courier New', monospace;
+  font-size: 0.8rem;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  cursor: pointer;
+  transition: background 0.18s ease, border-color 0.18s ease, opacity 0.18s ease;
+  opacity: 0.8;
+}
+
+#gameover-buttons button:hover {
+  background: rgba(200, 223, 240, 0.1);
+  border-color: rgba(200, 223, 240, 0.75);
+  opacity: 1;
+}
+
+#gameover-buttons button:active {
+  background: rgba(200, 223, 240, 0.18);
+}

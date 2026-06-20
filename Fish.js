@@ -28,11 +28,21 @@ class Fish extends SwimmingEntity {
     update(neighbors) {
         let movementDirection = this.isTransitioning ? this.targetDirection : this.currentDirection;
         let isHorizontal = (movementDirection === "left" || movementDirection === "right");
-        let minDistance  = (isHorizontal ? 78 : 80) * SCHOOL_SCALE;
-        let visualRange  = (isHorizontal ? 320 : 290) * SCHOOL_SCALE;
+        let minDistance  = (isHorizontal ? (selectedMode === 'hunter' ? 160 : 78) : (selectedMode === 'hunter' ? 165 : 80)) * SCHOOL_SCALE;
+        let visualRange  = (isHorizontal ? (selectedMode === 'hunter' ? 480 : 320) : (selectedMode === 'hunter' ? 440 : 290)) * SCHOOL_SCALE;
         let globalCenter = createVector(width / 2, height / 2);
-        let desired      = directionVectors[movementDirection];
         let innerMargin  = min(width, height) * 0.18;
+
+        // In hunter mode, desired points directly at the apple so all directional
+        // forces (push, separation projection, drift axis) work toward it.
+        let desired;
+        if (selectedMode === "hunter" && apple) {
+            let c = this.getBodyCenter();
+            desired = createVector(apple.x - c.x, apple.y - c.y);
+            if (desired.mag() > 0) desired.normalize();
+        } else {
+            desired = directionVectors[movementDirection];
+        }
 
         let centerX = 0, centerY = 0;
         let avgDX   = 0, avgDY   = 0;
@@ -67,12 +77,19 @@ class Fish extends SwimmingEntity {
             this.vel.y += (centerY - this.position.y) * cohesionStrength;
         }
 
-        // Global cohesion — gentle pull toward canvas centre
-        this.vel.x += (globalCenter.x - this.position.x) * 0.00022;
-        this.vel.y += (globalCenter.y - this.position.y) * 0.00022;
+        // Global cohesion — pull toward canvas centre (or apple in hunter mode)
+        if (selectedMode === "hunter" && apple) {
+            this.vel.x += (apple.x - this.position.x) * 0.0004;
+            this.vel.y += (apple.y - this.position.y) * 0.0004;
+        } else {
+            this.vel.x += (globalCenter.x - this.position.x) * 0.00022;
+            this.vel.y += (globalCenter.y - this.position.y) * 0.00022;
+        }
 
         // Separation — project out any backward component
-        let sepStrength = isHorizontal ? 0.048 : 0.065;
+        let sepStrength = selectedMode === 'hunter'
+            ? (isHorizontal ? 0.09  : 0.12)
+            : (isHorizontal ? 0.048 : 0.065);
         let sepX = moveX * sepStrength;
         let sepY = moveY * sepStrength;
 
@@ -94,26 +111,46 @@ class Fish extends SwimmingEntity {
             this.vel.y += (avgDY - this.vel.y) * alignStrength;
         }
 
-        // Directional steering — constant push in the current travel direction
-        this.vel.x += desired.x * 0.18 * this.bias;
-        this.vel.y += desired.y * 0.18 * this.bias;
-
-        // Perpendicular Perlin drift — organic wavering across the school
-        let t             = frameCount * 0.006;
-        let drift         = (noise(t, this.noisePhase) - 0.5) * 2;
-        let driftStrength = isHorizontal ? 0.11 : 0.06;
-        if (isHorizontal) {
-            this.vel.y += drift * driftStrength;
+        if (selectedMode === "hunter" && apple) {
+            // Arrive steering: steer velocity toward apple, slow inside arrival radius
+            let c  = this.getBodyCenter();
+            let dx = apple.x - c.x;
+            let dy = apple.y - c.y;
+            let d  = sqrt(dx * dx + dy * dy);
+            if (d > 0) {
+                let targetSpeed = d < 120 ? map(d, 0, 120, 0.5, 8 * this.bias) : 8 * this.bias;
+                this.vel.x += ((dx / d) * targetSpeed - this.vel.x) * 0.06;
+                this.vel.y += ((dy / d) * targetSpeed - this.vel.y) * 0.06;
+            }
         } else {
-            this.vel.x += drift * driftStrength;
+            // Directional steering — constant push in the current travel direction
+            this.vel.x += desired.x * 0.18 * this.bias;
+            this.vel.y += desired.y * 0.18 * this.bias;
+
+            // Perpendicular Perlin drift
+            let t             = frameCount * 0.006;
+            let drift         = (noise(t, this.noisePhase) - 0.5) * 2;
+            let driftStrength = isHorizontal ? 0.11 : 0.06;
+            if (isHorizontal) { this.vel.y += drift * driftStrength; }
+            else               { this.vel.x += drift * driftStrength; }
+
+            // Per-fish random jitter
+            let jitter = 0.18;
+            if (isHorizontal) { this.vel.y += random(-jitter, jitter); }
+            else               { this.vel.x += random(-jitter, jitter); }
         }
 
-        // Per-fish random jitter
-        let jitter = 0.18;
-        if (isHorizontal) {
-            this.vel.y += random(-jitter, jitter);
-        } else {
-            this.vel.x += random(-jitter, jitter);
+        // Animation direction toward apple — hunter mode
+        if (selectedMode === "hunter" && apple && !this.isTransitioning) {
+            let c = this.getBodyCenter();
+            let dx = apple.x - c.x, dy = apple.y - c.y;
+            let newDir = abs(dx) > abs(dy)
+                ? (dx > 0 ? 'right' : 'left')
+                : (dy > 0 ? 'down'  : 'up');
+            if (newDir !== this.currentDirection) {
+                this.targetDirection = newDir;
+                this.startTransition(this.currentDirection, newDir);
+            }
         }
 
         // Speed limit
@@ -124,8 +161,7 @@ class Fish extends SwimmingEntity {
             this.vel.mult(speedLimit);
         }
 
-        // Boundarys indicating transition point
-       // Wall turning — trigger direction reversal at boundary
+        // Wall turning — trigger direction reversal at boundary
         if (!this.isTransitioning) {
             if (movementDirection === 'right' && this.position.x > width - innerMargin) {
                 this.targetDirection = 'left';

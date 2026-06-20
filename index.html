@@ -9,6 +9,18 @@
 </head>
 <body>
 
+  <div id="gameover-overlay" class="hidden">
+    <div id="gameover-box">
+      <p id="go-title"></p>
+      <p id="go-score"></p>
+      <p id="go-time"></p>
+      <div id="gameover-buttons">
+        <button onclick="startGame('hunter')">Hunter</button>
+        <button onclick="startGame('prey')">Prey</button>
+      </div>
+    </div>
+  </div>
+
   <div id="menu-overlay">
     <div id="menu-box">
       <h1>Underwater</h1>
