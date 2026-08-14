@@ -408,12 +408,96 @@ class Shark extends SwimmingEntity {
 
     //** Should be aligning with schools velocity/ position relative to how fast the shark should be allowed to move
 update(schoolCenter) {
+    // ── Gameover: constant-speed wall bounce ─────────────────────────────────
+    if (gameState === "gameover") {
+        const CRUISE = 5;
+        let margin = 60;
+
+        // Ensure the shark always has some velocity
+        if (this.vel.mag() < CRUISE * 0.5) {
+            this.vel = p5.Vector.fromAngle(random(TWO_PI));
+            this.vel.mult(CRUISE);
+        }
+
+        // Clamp to cruise speed
+        this.vel.normalize();
+        this.vel.mult(CRUISE);
+
+        // Flip axis on wall contact
+        if ((this.vel.x > 0 && this.position.x > width  - margin) ||
+            (this.vel.x < 0 && this.position.x < margin)) this.vel.x *= -1;
+        if ((this.vel.y > 0 && this.position.y > height - margin) ||
+            (this.vel.y < 0 && this.position.y < margin)) this.vel.y *= -1;
+
+        // Velocity-based animation direction
+        if (!this.isTransitioning) {
+            let absX = abs(this.vel.x), absY = abs(this.vel.y);
+            let rawDir = null;
+            if      (absX > absY * 1.3) rawDir = this.vel.x > 0 ? 'right' : 'left';
+            else if (absY > absX * 1.3) rawDir = this.vel.y < 0 ? 'up'    : 'down';
+            if (rawDir) {
+                let resolved = this.resolveDirection(rawDir);
+                if (resolved !== this.currentDirection) {
+                    this.targetDirection = resolved;
+                    this.startTransition(this.currentDirection, resolved);
+                }
+            }
+        }
+
+        this.position.add(this.vel);
+        return;
+    }
+
+    let boosted    = millis() < sharkSpeedBoostEnd;
+    let topSpeed   = boosted ? 15.68 : 7.84;
+    let steerForce = boosted ? 2.8   : 1.4;
+    let friction   = 0.85;
+
+    // ── Hunter mode: WASD-driven movement ────────────────────────────────────
+    if (selectedMode === "hunter") {
+        // Most-recently-pressed key wins per axis; releasing falls back to whatever's still held
+        let hKey = [...keyOrder].reverse().find(k => k === 'a' || k === 'd');
+        let vKey = [...keyOrder].reverse().find(k => k === 'w' || k === 's');
+        let dx = hKey === 'd' ? 1 : hKey === 'a' ? -1 : 0;
+        let dy = vKey === 's' ? 1 : vKey === 'w' ? -1 : 0;
+
+        if (dx !== 0 || dy !== 0) {
+            let desired = createVector(dx, dy);
+            desired.normalize();
+            this.vel.x += desired.x * steerForce;
+            this.vel.y += desired.y * steerForce;
+        }
+
+        this.vel.mult(friction);
+        if (this.vel.mag() > topSpeed) { this.vel.normalize(); this.vel.mult(topSpeed); }
+
+        // Velocity-based animation direction (same logic as prey mode)
+        if (!this.isTransitioning) {
+            let absX = abs(this.vel.x), absY = abs(this.vel.y);
+            let speed = this.vel.mag();
+            let rawDir = null;
+            if (speed > 1.0) {
+                if      (absX > absY * 1.3) rawDir = this.vel.x > 0 ? 'right' : 'left';
+                else if (absY > absX * 1.3) rawDir = this.vel.y < 0 ? 'up'    : 'down';
+            }
+            if (rawDir) {
+                let resolved = this.resolveDirection(rawDir);
+                if (resolved !== this.currentDirection) {
+                    this.targetDirection = resolved;
+                    this.startTransition(this.currentDirection, resolved);
+                }
+            }
+        }
+
+        let margin = 20;
+        this.position.x = constrain(this.position.x, margin, width  - margin);
+        this.position.y = constrain(this.position.y, margin, height - margin);
+        this.position.add(this.vel);
+        return;
+    }
+
     let toSchoolCenter = p5.Vector.sub(schoolCenter, this.position);
     toSchoolCenter.normalize();
-
-    let topSpeed   = 7.84;      
-    let steerForce = 1.4;       
-    let friction   = 0.85;
 
     this.vel.x += toSchoolCenter.x * steerForce;
     this.vel.y += toSchoolCenter.y * steerForce;
@@ -424,31 +508,32 @@ update(schoolCenter) {
         this.vel.mult(topSpeed);
     }
 
-    // --- AUTOMATED TRANSITIONS (ONLY WHEN SELECTING PREY) ---
+    // --- AUTOMATED TRANSITIONS (PREY MODE ONLY) ---
     if (selectedMode === "prey") {
-        
-        // 1. School Mimicking
-        let dirCounts = { left: 0, right: 0, up: 0, down: 0 };
-        let totalFish = fishPositions.length;
 
-        for (let f of fishPositions) {
-            if (!f.isTransitioning && dirCounts[f.currentDirection] !== undefined) {
-                dirCounts[f.currentDirection]++;
+        // 1. Velocity-based direction: animate from where the shark is actually swimming.
+        //    Require one axis to dominate (1.3× ratio) to avoid jitter on diagonals.
+        if (!this.isTransitioning) {
+            let absX  = abs(this.vel.x);
+            let absY  = abs(this.vel.y);
+            let speed = this.vel.mag();
+            let rawDir = null;
+
+            if (speed > 1.0) {
+                if (absX > absY * 1.3)      rawDir = this.vel.x > 0 ? 'right' : 'left';
+                else if (absY > absX * 1.3) rawDir = this.vel.y < 0 ? 'up'    : 'down';
             }
-        }
 
-        let threshold = totalFish * 0.75;
-        for (let dir in dirCounts) {
-            if (dirCounts[dir] >= threshold) {
-                let resolved = this.resolveDirection(dir);
-                if (resolved !== this.currentDirection && !this.isTransitioning) {
+            if (rawDir) {
+                let resolved = this.resolveDirection(rawDir);
+                if (resolved !== this.currentDirection) {
                     this.targetDirection = resolved;
                     this.startTransition(this.currentDirection, resolved);
                 }
             }
         }
 
-        // 2. Wall turning 
+        // 2. Wall turning
         if (!this.isTransitioning) {
             let margin     = min(width, height) * 0.20;
             let onLeftSide = ['left','mirrored_up','mirrored_down'].includes(this.currentDirection);

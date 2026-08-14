@@ -11,9 +11,20 @@ let sharkTransSheet;
 let sharkTransData;
 let sharkBiteSheet;
 let sharkBiteData;
+let bgImage;
 let gameState = "menu";
 let selectedMode = null;
 let shark = null;
+let apple = null;
+let score = 0;
+let gameStartTime = 0;
+let wanderTarget = null;
+let sharkFood = null;
+let sharkFoodSpawnTime = 0;
+let sharkSpeedBoostEnd = 0;
+let bubbles = [];
+let keysHeld = {};
+let keyOrder = []; // WASD press order, most-recent last
 
 // ---------------------------------------------------------------------------
 // Constants / shared lookups
@@ -57,6 +68,12 @@ function preload() {
     sharkLoopData   = loadJSON("assets/shark_loops.json");
     sharkTransData  = loadJSON("assets/shark_transitions.json");
     sharkBiteData   = loadJSON("assets/shark_bite.json");
+
+    // Cropped middle section of the underwater-fantasy painting.
+    // Kept as a fixed-size still image and "cover" scaled at draw time
+    // (see drawBackground()) so it fills the canvas at any window size
+    // without distorting, regardless of which mode is selected.
+    bgImage = loadImage("assets/background.png");
 }
 
 function setup() {
@@ -73,20 +90,11 @@ function setup() {
 
     spawnFish();
 }
-function getSchoolCenter(){
-    let fishPositionSum = createVector(0,0);
-
-    if (fishPositions.length == 0){
-        return;
-    }
-
-    for(let fish of fishPositions){
-        
-        fishPositionSum.add(fish.position);
-        
-    }
-    let schoolCenter = fishPositionSum.div(fishPositions.length)
-    return schoolCenter;    
+function getSchoolCenter() {
+    if (fishPositions.length === 0) return createVector(width / 2, height / 2);
+    let sum = createVector(0, 0);
+    for (let fish of fishPositions) sum.add(fish.position);
+    return sum.div(fishPositions.length);
 }
 
 function windowResized() {
@@ -111,18 +119,31 @@ function windowResized() {
 // Replace your existing startGame function in sketch.js:
 function startGame(mode) {
     selectedMode = mode;
-    console.log(selectedMode);
     gameState    = "playing";
     document.getElementById("menu-overlay").classList.add("hidden");
-    
-    // Spawn the shark in BOTH modes instead of just 'hunter'
+    document.getElementById("gameover-overlay").classList.add("hidden");
+
+    // Request fullscreen here since this call is fired from the Play
+    // button's click handler — browsers require fullscreen to be
+    // triggered by a real user gesture, and a click qualifies.
+    // If the browser blocks it (e.g. iframe without the allow flag),
+    // this just silently no-ops and the game continues windowed.
+    fullscreen(true);
+
+    spawnFish();
+
     shark = new Shark(
-        width/2, height/2, 
-        sharkLoopSheet, sharkLoopData, 
-        sharkTransSheet, sharkTransData, 
-        sharkBiteSheet, sharkBiteData 
+        width/2, height/2,
+        sharkLoopSheet, sharkLoopData,
+        sharkTransSheet, sharkTransData,
+        sharkBiteSheet, sharkBiteData
     );
-    console.log(shark);
+
+    score             = 0;
+    gameStartTime     = millis();
+    sharkSpeedBoostEnd = 0;
+    spawnApple();
+    spawnSharkFood();
 }
 
 // ---------------------------------------------------------------------------
@@ -169,6 +190,201 @@ function spawnFish() {
 }
 
 // ---------------------------------------------------------------------------
+// Background (underwater-fantasy painting, middle section)
+// ---------------------------------------------------------------------------
+
+// "Cover" style scaling: crops bgImage to the canvas's aspect ratio, then
+// stretches that crop to fill the full canvas. This means the background
+// always fills the screen edge-to-edge with no letterboxing and no
+// distortion, no matter what size/shape the window is or which mode
+// (hunter/prey) is active — it's drawn first, every frame, before anything
+// else.
+function drawBackground() {
+    if (!bgImage) return;
+
+    let imgAspect    = bgImage.width / bgImage.height;
+    let canvasAspect = width / height;
+
+    let sx, sy, sw, sh;
+    if (canvasAspect > imgAspect) {
+        // canvas relatively wider than image -> use full width, crop height
+        sw = bgImage.width;
+        sh = sw / canvasAspect;
+        sx = 0;
+        sy = (bgImage.height - sh) / 2;
+    } else {
+        // canvas relatively taller than image -> use full height, crop width
+        sh = bgImage.height;
+        sw = sh * canvasAspect;
+        sy = 0;
+        sx = (bgImage.width - sw) / 2;
+    }
+
+    image(bgImage, 0, 0, width, height, sx, sy, sw, sh);
+}
+
+// ---------------------------------------------------------------------------
+// Bubbles
+// ---------------------------------------------------------------------------
+
+function updateBubbles() {
+    if (random() < 0.04) {
+        bubbles.push({
+            x:     random(width),
+            y:     height + 10,
+            r:     random(3, 10),
+            speed: random(0.6, 1.8),
+            drift: random(-0.3, 0.3),
+        });
+    }
+
+    noFill();
+    strokeWeight(1);
+    for (let i = bubbles.length - 1; i >= 0; i--) {
+        let b = bubbles[i];
+        b.y -= b.speed;
+        b.x += b.drift;
+        let alpha = map(b.y, 0, height, 0, 180);
+        stroke(150, 200, 255, alpha);
+        circle(b.x, b.y, b.r * 2);
+        if (b.y < -b.r) bubbles.splice(i, 1);
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Apple
+// ---------------------------------------------------------------------------
+
+const APPLE_RADIUS = 14;
+
+function spawnApple() {
+    let margin = min(width, height) * 0.18;
+    apple = {
+        x: random(margin, width  - margin),
+        y: random(margin, height - margin),
+    };
+}
+
+function drawApple() {
+    if (!apple) return;
+    textAlign(CENTER, CENTER);
+    textSize(28);
+    text('🍎', apple.x, apple.y);
+}
+
+function checkAppleCollision() {
+    if (!apple) return;
+    for (let fish of fishPositions) {
+        let c = fish.getBodyCenter();
+        let dx = c.x - apple.x;
+        let dy = c.y - apple.y;
+        if (dx * dx + dy * dy < (fish.getHitRadius() + APPLE_RADIUS) ** 2) {
+            score++;
+            if (score >= 50) { triggerFishWin(); return; }
+            spawnApple();
+            return;
+        }
+    }
+}
+
+// ---------------------------------------------------------------------------
+// HUD
+// ---------------------------------------------------------------------------
+
+function drawHUD() {
+    let elapsed = (millis() - gameStartTime) / 1000;
+    let m = floor(elapsed / 60);
+    let s = floor(elapsed % 60);
+    let timeStr = m + ':' + nf(s, 2);
+
+    noStroke();
+    textFont('Courier New');
+    textSize(15);
+    textAlign(RIGHT, TOP);
+    fill(180, 220, 255, 220);
+    text('SCORE  ' + score,   width - 22, 22);
+    text('TIME   ' + timeStr, width - 22, 42);
+}
+
+// ---------------------------------------------------------------------------
+// Shark food (kryptonite — 2× speed for 2 s)
+// ---------------------------------------------------------------------------
+
+function spawnSharkFood() {
+    let margin = min(width, height) * 0.18;
+    sharkFood = {
+        x: random(margin, width - margin),
+        y: random(margin, height - margin),
+    };
+    sharkFoodSpawnTime = millis();
+}
+
+function drawSharkFood() {
+    if (!sharkFood) return;
+    textAlign(CENTER, CENTER);
+    textSize(28);
+    text('💚', sharkFood.x, sharkFood.y);
+}
+
+function checkSharkFoodCollision() {
+    if (!sharkFood || !shark) return;
+    if (millis() - sharkFoodSpawnTime > 10000) { spawnSharkFood(); return; }
+    let dx = shark.position.x - sharkFood.x;
+    let dy = shark.position.y - sharkFood.y;
+    if (dx * dx + dy * dy < 30 * 30) {
+        sharkSpeedBoostEnd = millis() + 4000;
+        spawnSharkFood();
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Prey-mode auto-bite
+// ---------------------------------------------------------------------------
+
+// Triggers startBite() when a fish's hitbox overlaps (or is predicted to
+// overlap in LOOKAHEAD frames) with the shark's mouth hitbox.
+// The scan radius is BITE_RADIUS + fishRadius + 15px — just far enough to
+// catch fast fish before they slip past the mouth.
+function checkPreyAutoBite() {
+    if (!shark || shark.isBiting || shark.isTransitioning) return;
+    if (gameState !== 'playing') return;
+
+    const LOOKAHEAD = 60; // frames (~1 s at 60 fps)
+
+    let mouthPos    = shark.getMouthPosition();
+    let mouthRadius = shark.getMouthRadius();
+
+    for (let fish of fishPositions) {
+        let fishCenter = fish.getBodyCenter();
+        let fishRadius = fish.getHitRadius();
+        let combined   = mouthRadius + fishRadius;
+        let scanR      = combined + 15;
+
+        let dx   = fishCenter.x - mouthPos.x;
+        let dy   = fishCenter.y - mouthPos.y;
+        let distSq = dx * dx + dy * dy;
+
+        if (distSq > scanR * scanR) continue;
+
+        // Already inside bite hitbox — bite now
+        if (distSq <= combined * combined) {
+            shark.startBite();
+            return;
+        }
+
+        // Inside scan radius but not yet touching — check predicted position
+        let futureCX = fishCenter.x + fish.vel.x * LOOKAHEAD;
+        let futureCY = fishCenter.y + fish.vel.y * LOOKAHEAD;
+        let fdx = futureCX - mouthPos.x;
+        let fdy = futureCY - mouthPos.y;
+        if (fdx * fdx + fdy * fdy <= combined * combined) {
+            shark.startBite();
+            return;
+        }
+    }
+}
+
+// ---------------------------------------------------------------------------
 // Bite collisions
 // ---------------------------------------------------------------------------
 
@@ -181,74 +397,80 @@ function checkBiteCollisions() {
 
     let mouthPos    = shark.getMouthPosition();
     let mouthRadius = shark.getMouthRadius();
+    let before      = fishPositions.length;
 
     fishPositions = fishPositions.filter(fish => {
         let fishCenter = fish.getBodyCenter();
         let fishRadius = fish.getHitRadius();
         let distance   = p5.Vector.dist(mouthPos, fishCenter);
-
-        // Keep the fish only if it's NOT overlapping the active bite hitbox
         return distance > (mouthRadius + fishRadius);
     });
+
+    let eaten = before - fishPositions.length;
+    if (eaten > 0) {
+        shark.drawScale += 0.12 * eaten;
+        if (fishPositions.length === 0) triggerGameOver();
+    }
 }
+
+// ---------------------------------------------------------------------------
+// Game over
+// ---------------------------------------------------------------------------
+
+function showEndScreen(title) {
+    gameState = "gameover";
+    let elapsed = (millis() - gameStartTime) / 1000;
+    let m = floor(elapsed / 60);
+    let s = floor(elapsed % 60);
+    document.getElementById('go-title').textContent = title;
+    document.getElementById('go-score').textContent = 'SCORE  ' + score;
+    document.getElementById('go-time').textContent  = 'TIME   ' + m + ':' + nf(s, 2);
+    document.getElementById('gameover-overlay').classList.remove('hidden');
+}
+
+function triggerGameOver() { showEndScreen('SHARK WINS'); }
+function triggerFishWin()  { showEndScreen('FISH WIN');  }
 
 // ---------------------------------------------------------------------------
 // Draw
 // ---------------------------------------------------------------------------
 
 function draw() {
-    if (gameState !== "playing") return;
+    if (gameState === "menu") return;
 
-    background(220);
+    drawBackground();
+    updateBubbles();
     let schoolCenter = getSchoolCenter();
-    //debugging getSchoolCenter 
-    if (frameCount % 60 === 0) {
-    console.log(getSchoolCenter());
-}
+
+    if (gameState === "playing") {
         for (let fish of fishPositions) {
             fish.update(fishPositions);
             let info = fish.getFrameInfo();
             fish.drawFrame(info.sheet, info.data, info.frameIndex, fish.position.x, fish.position.y);
         }
-    
-    
-    
+    }
 
-    if(shark){
+
+    if (shark) {
         shark.update(schoolCenter);
         let info = shark.getFrameInfo();
-        shark.drawFrame(info.sheet, info.data, info.frameIndex,shark.position.x,shark.position.y);
-    }
-
-    checkBiteCollisions();
-
-    // ── Debug hitboxes ────────────────────────────────────────────────────────
-    // Draw these AFTER all sprites so they sit on top and are easy to see.
-    noFill();
-    strokeWeight(1.5);
-
-    // Fish body circles — faint red
-    stroke(255, 60, 60, 120);
-    for (let fish of fishPositions) {
-        let center = fish.getBodyCenter();
-        let r      = fish.getHitRadius();
-        circle(center.x, center.y, r * 2);
-    }
-
-    // Shark mouth circle — dim red normally, bright red when bite is active
-    if (shark) {
-        let mouthPos    = shark.getMouthPosition();
-        let mouthRadius = shark.getMouthRadius();
-        if (shark.isBiteHitboxActive()) {
-            stroke(255, 30, 30, 230);   // vivid red: hitbox is live
-            strokeWeight(2.5);
-        } else {
-            stroke(255, 80, 80, 100);   // faint: hitbox is dormant
-            strokeWeight(1.5);
+        if (millis() < sharkSpeedBoostEnd) {
+            let pulse = (sin(frameCount * 0.25) + 1) / 2;
+            drawingContext.filter = `saturate(${lerp(100, 600, pulse)}%)`;
         }
-        circle(mouthPos.x, mouthPos.y, mouthRadius * 2);
+        shark.drawFrame(info.sheet, info.data, info.frameIndex, shark.position.x, shark.position.y);
+        drawingContext.filter = 'none';
     }
 
+    if (gameState === "playing") {
+        drawApple();
+        checkAppleCollision();
+        drawSharkFood();
+        checkSharkFoodCollision();
+        checkPreyAutoBite();
+        checkBiteCollisions();
+        drawHUD();
+    }
 }
 
 // ---------------------------------------------------------------------------
@@ -256,38 +478,45 @@ function draw() {
 // ---------------------------------------------------------------------------
 
 function keyPressed() {
+    // Manual fullscreen toggle — works from the menu, mid-game, or on the
+    // game-over screen, in case the auto-fullscreen on Play got blocked
+    // or the player wants to bail out early (Escape also exits natively).
+    if (key === 'f' || key === 'F') {
+        fullscreen(!fullscreen());
+        return;
+    }
+
     if (gameState !== "playing") return;
 
-    // --- Handle Biting ---
     if (key === ' ') {
-        if (shark !== null && selectedMode === "hunter") {
-            shark.startBite();
-        }
-        return; // Exit early so we don't trigger movement logic simultaneously
+        if (shark !== null && selectedMode === "hunter") shark.startBite();
+        return;
     }
 
-    // --- Existing Movement Logic ---
-    let newDirection = null;
-    if (key === 'w'|| key === 'W') newDirection = "up";
-    if (key === 'a'|| key === 'A') newDirection = "left";
-    if (key === 's'|| key === 'S') newDirection = "down";
-    if (key === 'd'|| key === 'D') newDirection = "right";
-
-    if (!newDirection) return;
-
-    for (let fish of fishPositions) {
-        if (newDirection !== fish.currentDirection) {
-            fish.targetDirection = newDirection;
-            fish.startTransition(fish.currentDirection, newDirection);
-        }
+    let k = key.toLowerCase();
+    if ('wasd'.includes(k)) {
+        keysHeld[k] = true;
+        keyOrder = keyOrder.filter(x => x !== k);
+        keyOrder.push(k);
     }
 
-    // ONLY control the shark manually if we are NOT in prey mode
-    if(shark !== null && selectedMode !== "prey") {
-        let resolved = shark.resolveDirection((newDirection));
-        if(resolved !== shark.currentDirection || shark.isTransitioning ){
-            shark.targetDirection = resolved;
-            shark.startTransition(shark.currentDirection, resolved);
+    // Prey mode: WASD steers the fish school
+    if (selectedMode === "prey") {
+        let newDirection = { w:'up', a:'left', s:'down', d:'right' }[k];
+        if (newDirection) {
+            for (let fish of fishPositions) {
+                if (newDirection !== fish.currentDirection) {
+                    fish.targetDirection = newDirection;
+                    fish.startTransition(fish.currentDirection, newDirection);
+                }
+            }
         }
     }
+    // Hunter mode: movement is handled per-frame in Shark.update() from keysHeld
+}
+
+function keyReleased() {
+    let k = key.toLowerCase();
+    keysHeld[k] = false;
+    keyOrder = keyOrder.filter(x => x !== k);
 }
