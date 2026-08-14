@@ -6,6 +6,15 @@ class Fish extends SwimmingEntity {
         this.id         = id;
     }
 
+    drawFrame(sheet, data, index, x, y) {
+        const previousFilter = drawingContext.filter;
+        // Shift the sprite's teal base toward #166e93, sampled directly from
+        // the Final Assets UI sprite sheet, while retaining its pixel shading.
+        drawingContext.filter = "hue-rotate(16deg) saturate(110%) brightness(105%)";
+        super.drawFrame(sheet, data, index, x, y);
+        drawingContext.filter = previousFilter;
+    }
+
    
      // Returns the screen-space center of this fish's body.
     // fish.position is the TOP-LEFT corner of the sprite (SwimmingEntity.drawFrame

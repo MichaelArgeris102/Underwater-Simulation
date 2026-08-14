@@ -12,17 +12,24 @@ let sharkTransData;
 let sharkBiteSheet;
 let sharkBiteData;
 let bgImage;
+let fishFoodImage;
+let sharkFoodImage;
+let bubbleSheet;
+let bubbleData;
+let backgroundMusic = null;
 let gameState = "menu";
 let selectedMode = null;
 let shark = null;
 let apple = null;
 let score = 0;
+let fishEatenCount = 0;
 let gameStartTime = 0;
 let wanderTarget = null;
 let sharkFood = null;
 let sharkFoodSpawnTime = 0;
 let sharkSpeedBoostEnd = 0;
 let bubbles = [];
+let nextBubbleSize = 0;
 let keysHeld = {};
 let keyOrder = []; // WASD press order, most-recent last
 
@@ -34,6 +41,9 @@ const SCALE        = 1.75;
 const SCHOOL_SCALE = SCALE / BASE_SCALE;
 const COLS         = 10;
 const ROWS         = 5;
+const FOOD_SIZE    = 32;
+const BUBBLE_SIZES = [12, 16, 20, 24, 28, 32];
+const BUBBLE_FRAME_CENTER_Y = [12, 11, 10, 9, 8, 6, 5, 4, 3];
 
 const directionVectors = {
     right: null,
@@ -69,6 +79,11 @@ function preload() {
     sharkTransData  = loadJSON("assets/shark_transitions.json");
     sharkBiteData   = loadJSON("assets/shark_bite.json");
 
+    fishFoodImage  = loadImage("assets/Final Assets/fish-food.png");
+    sharkFoodImage = loadImage("assets/Final Assets/shark-food.png");
+    bubbleSheet    = loadImage("assets/Final Assets/bubble-animation.png");
+    bubbleData     = loadJSON("assets/Final Assets/bubble-animation.json");
+
     // Cropped middle section of the underwater-fantasy painting.
     // Kept as a fixed-size still image and "cover" scaled at draw time
     // (see drawBackground()) so it fills the canvas at any window size
@@ -88,7 +103,27 @@ function setup() {
     directionVectors.mirrored_up   = createVector(0, -1);  
     directionVectors.mirrored_down = createVector(0,  1);  
 
+    initializeBackgroundMusic();
     spawnFish();
+}
+
+function initializeBackgroundMusic() {
+    if (backgroundMusic) return;
+
+    backgroundMusic = new Audio("assets/Final Assets/Prey Simulator.wav");
+    backgroundMusic.loop = true;
+    backgroundMusic.volume = 0.35;
+
+    backgroundMusic.play().catch(() => {});
+
+    // If autoplay is blocked, the first interaction unlocks the same track.
+    // startGame reuses it without changing its playback position.
+    document.addEventListener("pointerdown", () => {
+        if (backgroundMusic.paused) backgroundMusic.play().catch(() => {});
+    }, { once: true });
+    document.addEventListener("keydown", () => {
+        if (backgroundMusic.paused) backgroundMusic.play().catch(() => {});
+    }, { once: true });
 }
 function getSchoolCenter() {
     if (fishPositions.length === 0) return createVector(width / 2, height / 2);
@@ -130,16 +165,26 @@ function startGame(mode) {
     // this just silently no-ops and the game continues windowed.
     fullscreen(true);
 
+    initializeBackgroundMusic();
+    if (backgroundMusic.paused) {
+        backgroundMusic.play().catch(() => {});
+    }
+
     spawnFish();
 
     shark = new Shark(
-        width/2, height/2,
+        width + 220, height/2,
         sharkLoopSheet, sharkLoopData,
         sharkTransSheet, sharkTransData,
         sharkBiteSheet, sharkBiteData
     );
+    shark.currentDirection = "left";
+    shark.targetDirection = "left";
+    shark.vel = createVector(-7.84, 0);
+    shark.isEntering = true;
 
     score             = 0;
+    fishEatenCount    = 0;
     gameStartTime     = millis();
     sharkSpeedBoostEnd = 0;
     spawnApple();
@@ -153,7 +198,7 @@ function startGame(mode) {
 function spawnFish() {
     fishPositions = [];
 
-    let spawnCenter    = createVector(width / 2, height / 2);
+    let spawnCenter    = createVector(-110, height / 2);
     let total          = COLS * ROWS;
     const SPAWN_RADIUS = 340 * SCHOOL_SCALE;
 
@@ -228,26 +273,37 @@ function drawBackground() {
 // ---------------------------------------------------------------------------
 
 function updateBubbles() {
-    if (random() < 0.04) {
+    if (random() < 0.12) {
+        let size = BUBBLE_SIZES[nextBubbleSize];
+        nextBubbleSize = (nextBubbleSize + 1) % BUBBLE_SIZES.length;
         bubbles.push({
             x:     random(width),
             y:     height + 10,
-            r:     random(3, 10),
+            size,
             speed: random(0.6, 1.8),
             drift: random(-0.3, 0.3),
+            born:  millis(),
+            phase: floor(random(9)),
         });
     }
 
-    noFill();
-    strokeWeight(1);
+    let bubbleFrames = Object.values(bubbleData.frames);
     for (let i = bubbles.length - 1; i >= 0; i--) {
         let b = bubbles[i];
         b.y -= b.speed;
         b.x += b.drift;
         let alpha = map(b.y, 0, height, 0, 180);
-        stroke(150, 200, 255, alpha);
-        circle(b.x, b.y, b.r * 2);
-        if (b.y < -b.r) bubbles.splice(i, 1);
+        let frameIndex = (b.phase + floor((millis() - b.born) / 100)) % bubbleFrames.length;
+        let f = bubbleFrames[frameIndex].frame;
+        let frameOffsetY = (BUBBLE_FRAME_CENTER_Y[frameIndex] - 7.5) * (b.size / 16);
+
+        push();
+        imageMode(CENTER);
+        tint(255, alpha);
+        image(bubbleSheet, b.x, b.y - frameOffsetY, b.size, b.size, f.x, f.y, f.w, f.h);
+        pop();
+
+        if (b.y < -b.size / 2) bubbles.splice(i, 1);
     }
 }
 
@@ -262,14 +318,17 @@ function spawnApple() {
     apple = {
         x: random(margin, width  - margin),
         y: random(margin, height - margin),
+        bobPhase: random(TWO_PI),
     };
 }
 
 function drawApple() {
     if (!apple) return;
-    textAlign(CENTER, CENTER);
-    textSize(28);
-    text('🍎', apple.x, apple.y);
+    let drawY = apple.y + sin(millis() * 0.002 + apple.bobPhase) * 6;
+    push();
+    imageMode(CENTER);
+    image(fishFoodImage, apple.x, drawY, FOOD_SIZE, FOOD_SIZE);
+    pop();
 }
 
 function checkAppleCollision() {
@@ -315,15 +374,18 @@ function spawnSharkFood() {
     sharkFood = {
         x: random(margin, width - margin),
         y: random(margin, height - margin),
+        bobPhase: random(TWO_PI),
     };
     sharkFoodSpawnTime = millis();
 }
 
 function drawSharkFood() {
     if (!sharkFood) return;
-    textAlign(CENTER, CENTER);
-    textSize(28);
-    text('💚', sharkFood.x, sharkFood.y);
+    let drawY = sharkFood.y + sin(millis() * 0.002 + sharkFood.bobPhase) * 6;
+    push();
+    imageMode(CENTER);
+    image(sharkFoodImage, sharkFood.x, drawY, FOOD_SIZE, FOOD_SIZE);
+    pop();
 }
 
 function checkSharkFoodCollision() {
@@ -408,7 +470,10 @@ function checkBiteCollisions() {
 
     let eaten = before - fishPositions.length;
     if (eaten > 0) {
-        shark.drawScale += 0.12 * eaten;
+        let previousGrowthSteps = floor(fishEatenCount / 4);
+        fishEatenCount += eaten;
+        let newGrowthSteps = floor(fishEatenCount / 4);
+        shark.drawScale += 0.12 * (newGrowthSteps - previousGrowthSteps);
         if (fishPositions.length === 0) triggerGameOver();
     }
 }
@@ -436,10 +501,10 @@ function triggerFishWin()  { showEndScreen('FISH WIN');  }
 // ---------------------------------------------------------------------------
 
 function draw() {
-    if (gameState === "menu") return;
-
     drawBackground();
     updateBubbles();
+    if (gameState === "menu") return;
+
     let schoolCenter = getSchoolCenter();
 
     if (gameState === "playing") {
@@ -512,11 +577,12 @@ function keyPressed() {
             }
         }
     }
-    // Hunter mode: movement is handled per-frame in Shark.update() from keysHeld
+    // Hunter mode: WASD movement and facing are handled per-frame in Shark.update()
 }
 
 function keyReleased() {
     let k = key.toLowerCase();
     keysHeld[k] = false;
     keyOrder = keyOrder.filter(x => x !== k);
+
 }

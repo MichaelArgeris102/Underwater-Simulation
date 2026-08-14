@@ -26,8 +26,12 @@
       <h1>Underwater</h1>
       <p>choose your role</p>
       <div id="menu-buttons">
-        <button onclick="startGame('hunter')">Hunter </button>
-        <button onclick="startGame('prey')">Prey</button>
+        <button class="role-button" onclick="startGame('hunter')" aria-label="Play as shark" title="Play as shark">
+          <span class="role-sprite shark-role" aria-hidden="true"></span>
+        </button>
+        <button class="role-button" onclick="startGame('prey')" aria-label="Play as fish" title="Play as fish">
+          <span class="role-sprite fish-role" aria-hidden="true"></span>
+        </button>
       </div>
     </div>
   </div>

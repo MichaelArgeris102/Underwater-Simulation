@@ -12,7 +12,12 @@ class Shark extends SwimmingEntity {
         this.biteSheet = biteSheet;
         this.biteData  = biteData;
         this.currentLoopRelativeIndex = 0;
-        this.loopAnchorFrame = 0; // lets getLoopFrameInfo count phase from a reset point instead of raw frameCount
+        this.loopAnchorTime = 0;
+        this.transitionStartFrame = 0;
+        this.pendingDirection = null;
+        this.isEntering = false;
+        this.animationSpeed = 0.65;
+        this.biteFrameTicks = 3.9;
         //tracking vars
         this.sharkRadius = 0;
         this.drawScale = (SCALE * 2)* 1.05;
@@ -113,11 +118,58 @@ class Shark extends SwimmingEntity {
     return rawKey;
 }
 
+    requestAlignedTransition(to) {
+        if (to === this.currentDirection) {
+            this.pendingDirection = null;
+            return;
+        }
+
+        this.pendingDirection = to;
+        if (this.isTransitioning || this.isBiting) return;
+
+        let headSide = this.getHeadSide();
+        let tagName = this.getTransitionTagName(this.currentDirection, to, headSide);
+        if (!tagName) return;
+
+        // These are the source-loop poses that most closely match each
+        // transition's opening frame. Wait for the matching pose, then play
+        // the complete authored transition from frame zero.
+        const entryFrames = {
+            right_to_mirrored_up_head_left: 2, right_to_mirrored_up_head_right: 8,
+            right_to_mirrored_down_head_left: 2, right_to_mirrored_down_head_right: 8,
+            right_to_left_head_left: 2, right_to_left_head_right: 8,
+            right_to_up_head_left: 4, right_to_up_head_right: 8,
+            right_to_down_head_left: 2, right_to_down_head_right: 8,
+            left_to_mirrored_up_head_right: 2, left_to_mirrored_up_head_left: 8,
+            left_to_mirrored_down_head_right: 2, left_to_mirrored_down_head_left: 8,
+            left_to_right_head_left: 8,
+            left_to_down_head_right: 2, left_to_down_head_left: 8,
+            left_to_up_head_left: 2, left_to_up_head_right: 8,
+            mirrored_up_to_left: 0, mirrored_up_to_right: 10,
+            mirrored_up_to_down: 0, mirrored_up_to_mirrored_down: 0,
+            down_to_mirrored_up: 0, down_to_left: 0,
+            down_to_right: 6, down_to_up: 6,
+            up_to_down: 9, up_to_right: 9, up_to_left: 9,
+            mirrored_down_to_left: 0, mirrored_down_to_right: 0,
+            mirrored_down_to_mirrored_up: 0
+        };
+
+        let entryFrame = entryFrames[tagName] ?? 0;
+        let loopTagName = this.loopTagNames[this.currentDirection];
+        let loopTag = this.loopData.meta.frameTags.find(t => t.name === loopTagName);
+        let loopLength = loopTag ? loopTag.to - loopTag.from + 1 : 1;
+        let frameDistance = abs(this.currentLoopRelativeIndex - entryFrame);
+        let wrappedDistance = min(frameDistance, loopLength - frameDistance);
+        if (wrappedDistance > 1) return;
+
+        this.targetDirection = to;
+        this.pendingDirection = null;
+        this.startTransition(this.currentDirection, to);
+    }
+
 
 
     startTransition(from, to) {
-    let wasAlreadyTransitioning = this.isTransitioning;   // capture before we modify state
-
     // --- BITE INTERRUPT LOGIC ---
     // If we're mid-bite, figure out exactly which relative frame of the bite
     // tag is currently showing, then cancel the bite. We'll resume the
@@ -126,7 +178,7 @@ class Shark extends SwimmingEntity {
     let interruptedBiteRelIdx = null;
     if (this.isBiting) {
         let elapsed        = frameCount - this.biteStartFrame;
-        let biteDivisor     = 6;
+        let biteDivisor     = this.biteFrameTicks;
         let elapsedFrames   = floor(elapsed / biteDivisor);
         let biteLength      = this.currentBiteTag.to - this.currentBiteTag.from + 1;
         let currentRelIdx   = this.biteStartRelIdx + elapsedFrames;
@@ -155,55 +207,34 @@ class Shark extends SwimmingEntity {
 
     if (!tag) return;
 
-    this.currentTag = tag;   // must be set before calling getTransitionDivisor()
+    this.currentTag = tag;
 
     let skipFrames;
     if (interruptedBiteRelIdx !== null) {
         // Resume one frame past where the bite was cut off — e.g. biting on
         // relIdx 5 of right_bite means we pick up at relIdx 6 of the
         // right_to_<dir> transition tag.
-        skipFrames = interruptedBiteRelIdx + 1;
+        skipFrames = 0;
     } else {
-        // Only apply the loop-based skip when starting fresh from the loop;
-        // if we're already mid-transition and a new key arrives, just
-        // restart cleanly from frame 0.
-        skipFrames = wasAlreadyTransitioning ? 0 : this.getTransitionSkipFrames();
+        // Always enter a normal turn on its first frame. Skipping ahead based
+        // on the loop phase caused a visible pose snap at the start of turns.
+        skipFrames = 0;
     }
     let maxSkip = tag.to - tag.from;
     skipFrames  = Math.min(skipFrames, maxSkip);
 
-    let divisor           = this.getTransitionDivisor();
-    this.transitionStartFrame = frameCount - Math.round(skipFrames * divisor);
+    this.transitionStartFrame = frameCount;
     this.isTransitioning      = true;
 }
 
-    getTransitionDivisor() {
-    let name;
-    if (this.currentTag) {
-        name = this.currentTag.name;
-    } else {
-        name = '';
-    }
-    const fastTags = [
-
-        'up_to_down', 'down_to_up', 'down_to_right', 'down_to_left', 'right_to_down',
-        'mirrored_up_to_down', 'down_to_mirrored_up',
-        'mirrored_down_to_up', 'up_to_mirrored_down',
-        'mirrored_down_to_left', 
-        'mirrored_down_to_right', 'mirrored_up_to_left',
-        'mirrored_up_to_right',
-        'right_to_left', 'left_to_right'
-    ];
-
-    for (let ft of fastTags) {
-        if (name.startsWith(ft)) {
-            return 3.5;
-        }
-    }
+    legacyTransitionDivisor() {
+        // An integer cadence keeps every animation frame on screen for the
+        // same duration. The old 3.5 cadence alternated frame timing and made
+        // several turns look jittery.
         return 5;
     }
 
-    getTransitionSkipFrames() {
+    legacyTransitionSkipFrames() {
     let dir    = this.currentDirection;
     let relIdx = this.currentLoopRelativeIndex;
 
@@ -241,7 +272,7 @@ class Shark extends SwimmingEntity {
             let end = this.currentBiteTag.to;
             let length = end - start + 1;
 
-            let biteDivisor = 6;
+            let biteDivisor = this.biteFrameTicks;
             
             // Calculate how many frames of the bite animation have passed
             let elapsedFrames = floor(elapsed / biteDivisor);
@@ -275,7 +306,7 @@ class Shark extends SwimmingEntity {
                     let tag     = this.loopData.meta.frameTags.find(t => t.name === tagName);
 
                     if (tag) {
-                        this.loopAnchorFrame = frameCount;
+                        this.loopAnchorTime = millis();
                         this.currentLoopRelativeIndex = 0;
                         return { sheet: this.loopSheet, data: this.loopData, frameIndex: tag.from };
                     }
@@ -290,16 +321,17 @@ class Shark extends SwimmingEntity {
 
         // 2. Transition Animation (Your existing code)
         if (this.isTransitioning) {
-            let elapsed    = frameCount - this.transitionStartFrame;
             let start      = this.currentTag.from;
             let end        = this.currentTag.to;
-            let divisor    = this.getTransitionDivisor(); 
-            let frameIndex = start + floor(elapsed / divisor);
+            let elapsed    = frameCount - this.transitionStartFrame;
+            let frameIndex = start + elapsed;
 
             if (frameIndex > end) {
                 this.isTransitioning      = false;
                 this.currentDirection     = this.targetDirection;
                 this.transitionStartFrame = 0;
+                this.loopAnchorTime       = millis();
+                this.currentLoopRelativeIndex = 0;
                 return this.getLoopFrameInfo();
             }
             return { sheet: this.transSheet, data: this.transData, frameIndex };
@@ -314,15 +346,25 @@ class Shark extends SwimmingEntity {
         let tag     = this.loopData.meta.frameTags.find(t => t.name === tagName);
         if (!tag) return { sheet: this.loopSheet, data: this.loopData, frameIndex: 0 };
 
-        let start      = tag.from;
-        let end        = tag.to;
-        let length     = end - start + 1;
-        let phaseFrame = frameCount - this.loopAnchorFrame;
-        let relIdx     = floor(phaseFrame / 5) % length;
-        if (relIdx < 0) relIdx += length;
+        let start = tag.from;
+        let end   = tag.to;
+        let totalDuration = 0;
+        for (let i = start; i <= end; i++) {
+            totalDuration += this.loopData.frames[i].duration * this.animationSpeed;
+        }
+
+        let elapsedMs = (millis() - this.loopAnchorTime) % totalDuration;
+        if (elapsedMs < 0) elapsedMs += totalDuration;
+
+        let frameIndex = start;
+        while (frameIndex < end && elapsedMs >= this.loopData.frames[frameIndex].duration * this.animationSpeed) {
+            elapsedMs -= this.loopData.frames[frameIndex].duration * this.animationSpeed;
+            frameIndex++;
+        }
+
+        let relIdx = frameIndex - start;
 
         this.currentLoopRelativeIndex = relIdx;
-        let frameIndex = start + relIdx; 
         return { sheet: this.loopSheet, data: this.loopData, frameIndex };
     }
 
@@ -387,7 +429,7 @@ class Shark extends SwimmingEntity {
         if (!this.isBiting || !this.currentBiteTag) return false;
 
         let elapsed       = frameCount - this.biteStartFrame;
-        let biteDivisor   = 6;
+        let biteDivisor   = this.biteFrameTicks;
         let currentRelIdx = this.biteStartRelIdx + floor(elapsed / biteDivisor);
         let tag           = this.currentBiteTag;
         let length        = tag.to - tag.from + 1;
@@ -438,8 +480,7 @@ update(schoolCenter) {
             if (rawDir) {
                 let resolved = this.resolveDirection(rawDir);
                 if (resolved !== this.currentDirection) {
-                    this.targetDirection = resolved;
-                    this.startTransition(this.currentDirection, resolved);
+                    this.requestAlignedTransition(resolved);
                 }
             }
         }
@@ -451,7 +492,7 @@ update(schoolCenter) {
     let boosted    = millis() < sharkSpeedBoostEnd;
     let topSpeed   = boosted ? 15.68 : 7.84;
     let steerForce = boosted ? 2.8   : 1.4;
-    let friction   = 0.85;
+    let friction   = 0.95;
 
     // ── Hunter mode: WASD-driven movement ────────────────────────────────────
     if (selectedMode === "hunter") {
@@ -468,10 +509,9 @@ update(schoolCenter) {
             this.vel.y += desired.y * steerForce;
         }
 
-        this.vel.mult(friction);
         if (this.vel.mag() > topSpeed) { this.vel.normalize(); this.vel.mult(topSpeed); }
 
-        // Velocity-based animation direction (same logic as prey mode)
+        // Keep the shark's facing aligned with the movement driven by WASD.
         if (!this.isTransitioning) {
             let absX = abs(this.vel.x), absY = abs(this.vel.y);
             let speed = this.vel.mag();
@@ -483,16 +523,31 @@ update(schoolCenter) {
             if (rawDir) {
                 let resolved = this.resolveDirection(rawDir);
                 if (resolved !== this.currentDirection) {
-                    this.targetDirection = resolved;
-                    this.startTransition(this.currentDirection, resolved);
+                    this.requestAlignedTransition(resolved);
                 }
             }
         }
 
         let margin = 20;
-        this.position.x = constrain(this.position.x, margin, width  - margin);
-        this.position.y = constrain(this.position.y, margin, height - margin);
         this.position.add(this.vel);
+        if (this.isEntering) {
+            if (this.position.x <= width - margin) this.isEntering = false;
+            return;
+        }
+        if (this.position.x < margin) {
+            this.position.x = margin;
+            this.vel.x = abs(this.vel.x);
+        } else if (this.position.x > width - margin) {
+            this.position.x = width - margin;
+            this.vel.x = -abs(this.vel.x);
+        }
+        if (this.position.y < margin) {
+            this.position.y = margin;
+            this.vel.y = abs(this.vel.y);
+        } else if (this.position.y > height - margin) {
+            this.position.y = height - margin;
+            this.vel.y = -abs(this.vel.y);
+        }
         return;
     }
 
@@ -527,8 +582,7 @@ update(schoolCenter) {
             if (rawDir) {
                 let resolved = this.resolveDirection(rawDir);
                 if (resolved !== this.currentDirection) {
-                    this.targetDirection = resolved;
-                    this.startTransition(this.currentDirection, resolved);
+                    this.requestAlignedTransition(resolved);
                 }
             }
         }
@@ -550,8 +604,7 @@ update(schoolCenter) {
             }
 
             if (newDir) {
-                this.targetDirection = newDir;
-                this.startTransition(this.currentDirection, newDir);
+                this.requestAlignedTransition(newDir);
             }
         }
     }

@@ -16,10 +16,10 @@ body {
   display: flex;
   align-items: center;
   justify-content: center;
-  background: rgba(8, 18, 34, 0.68);
+  background: transparent;
   z-index: 10;
-  backdrop-filter: blur(2px);
-  -webkit-backdrop-filter: blur(2px);
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
 }
 
 #menu-overlay.hidden {
@@ -61,9 +61,12 @@ body {
 }
 
 #menu-buttons button {
-  padding: 0.65rem 2.4rem;
-  background: transparent;
-  border: 1px solid rgba(200, 223, 240, 0.35);
+  width: 200px;
+  height: 72px;
+  padding: 0;
+  background: #0b5270;
+  border-radius: 8px;
+  border: 0;
   color: #c8dff0;
   font-family: 'Courier New', monospace;
   font-size: 0.8rem;
@@ -71,17 +74,63 @@ body {
   text-transform: uppercase;
   cursor: pointer;
   transition: background 0.18s ease, border-color 0.18s ease, opacity 0.18s ease;
-  opacity: 0.8;
+  opacity: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+}
+
+.role-sprite {
+  display: block;
+  flex: 0 0 auto;
+  image-rendering: pixelated;
+  background-repeat: no-repeat;
+}
+
+.shark-role {
+  width: 84px;
+  height: 66px;
+  background-image: url("assets/shark_loops.png");
+  background-size: 7728px 66px;
+  background-position: 0 0;
+}
+
+.fish-role {
+  width: 56px;
+  height: 56px;
+  background-image: url("assets/fishloops.png");
+  background-size: 5712px 56px;
+  background-position: 0 0;
+}
+
+.role-button:hover .shark-role,
+.role-button:focus-visible .shark-role {
+  animation: shark-role-swim 0.72s steps(12) infinite;
+}
+
+.role-button:hover .fish-role,
+.role-button:focus-visible .fish-role {
+  animation: fish-role-swim 0.66s steps(11) infinite;
+}
+
+@keyframes shark-role-swim {
+  from { background-position: 0 0; }
+  to   { background-position: -1008px 0; }
+}
+
+@keyframes fish-role-swim {
+  from { background-position: 0 0; }
+  to   { background-position: -616px 0; }
 }
 
 #menu-buttons button:hover {
-  background: rgba(200, 223, 240, 0.1);
-  border-color: rgba(200, 223, 240, 0.75);
+  background: #117da4;
   opacity: 1;
 }
 
 #menu-buttons button:active {
-  background: rgba(200, 223, 240, 0.18);
+  background: #063c52;
 }
 
 /* ── Game-over overlay ────────────────────────────────────── */
